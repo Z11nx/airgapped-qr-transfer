@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Airgap·QR — Camera File Transfer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.0.3/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<style>
+  :root{
+    --bg:#10141b;
+    --panel:#171d27;
+    --panel-2:#1e2530;
+    --border:rgba(255,255,255,0.09);
+    --border-soft:rgba(255,255,255,0.05);
+    --text:#eae7de;
+    --muted:#8891a1;
+    --tx:#ffb020;
+    --tx-soft:rgba(255,176,32,0.12);
+    --rx:#4fd1c5;
+    --rx-soft:rgba(79,209,197,0.12);
+    --good:#6fcf72;
+    --bad:#ef6461;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 700px at 15% -10%, rgba(255,176,32,0.05), transparent 60%),
+      radial-gradient(1200px 700px at 100% 0%, rgba(79,209,197,0.05), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--tx-soft);}
+  a{color:inherit;}
+  button{font-family:inherit;}
+  .app{max-width:1080px;margin:0 auto;padding:28px 20px 60px;}
+
+  /* ---------- Topbar ---------- */
+  .topbar{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:24px;
+    flex-wrap:wrap; margin-bottom:22px;
+  }
+  .brand{display:flex; align-items:center; gap:14px;}
+  .brand-mark{
+    width:44px;height:44px; flex:none; border-radius:9px;
+    border:1px solid var(--border);
+    background:
+      linear-gradient(135deg, rgba(255,176,32,0.18), rgba(79,209,197,0.18));
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:19px; color:var(--text);
+  }
+  .brand-text h1{
+    font-family:var(--mono); font-size:19px; letter-spacing:0.06em; margin:0;
+    font-weight:600;
+  }
+  .brand-text h1 .accent{color:var(--tx);}
+  .brand-text p{margin:3px 0 0; font-size:12.5px; color:var(--muted);}
+
+  .mode-switch{
+    display:flex; border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    background:var(--panel);
+  }
+  .mode-btn{
+    appearance:none; border:none; background:transparent; color:var(--muted);
+    font-family:var(--mono); font-size:12.5px; letter-spacing:0.04em;
+    padding:11px 18px; cursor:pointer; transition:background .15s, color .15s;
+  }
+  .mode-btn:hover{color:var(--text);}
+  .mode-btn.tx.active{background:var(--tx-soft); color:var(--tx);}
+  .mode-btn.rx.active{background:var(--rx-soft); color:var(--rx);}
+
+  /* ---------- Console / panels ---------- */
+  .console{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:22px;
+  }
+  .panel{display:grid; grid-template-columns:260px 1fr; gap:26px;}
+  @media (max-width:820px){ .panel{grid-template-columns:1fr;} }
+
+  .side-col{display:flex; flex-direction:column; gap:16px; min-width:0;}
+  .stage-col{display:flex; flex-direction:column; gap:16px; min-width:0;}
+
+  h2.section-title{
+    font-family:var(--mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 2px;
+  }
+
+  /* dropzone */
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:10px; padding:22px 16px;
+    text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+    background:var(--panel-2);
+  }
+  .dropzone.drag{border-color:var(--tx); background:var(--tx-soft);}
+  .dz-label{margin:0 0 4px; font-size:13.5px;}
+  .link-btn{background:none; border:none; color:var(--tx); text-decoration:underline; cursor:pointer; font-size:13.5px; padding:0; font-family:inherit;}
+  .dz-hint{margin:0; font-size:11.5px; color:var(--muted);}
+
+  .file-info{
+    border:1px solid var(--border); border-radius:10px; padding:12px 14px;
+    background:var(--panel-2); font-size:12.5px; display:flex; flex-direction:column; gap:5px;
+  }
+  .file-info .row{display:flex; justify-content:space-between; gap:10px;}
+  .file-info .row span:first-child{color:var(--muted);}
+  .file-info .row span:last-child{font-family:var(--mono); text-align:right; overflow-wrap:anywhere;}
+
+  .controls{display:flex; flex-direction:column; gap:12px;}
+  .controls label{font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:6px;}
+  .controls .row-inline{display:flex; align-items:center; gap:10px;}
+  .controls input[type=range]{flex:1; accent-color:var(--tx);}
+  .controls select{
+    background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    border-radius:7px; padding:7px 9px; font-family:var(--mono); font-size:12.5px;
+  }
+  .fps-val{font-family:var(--mono); font-size:12px; color:var(--text); min-width:52px; text-align:right;}
+
+  .primary-btn{
+    appearance:none; border:none; border-radius:9px; padding:12px 16px;
+    font-family:var(--mono); font-size:13px; letter-spacing:0.03em; cursor:pointer;
+    font-weight:600; text-align:center; text-decoration:none; display:block;
+    transition:filter .15s, transform .1s;
+  }
+  .primary-btn:active{transform:translateY(1px);}
+  .primary-btn.tx{background:var(--tx); color:#1a1204;}
+  .primary-btn.rx{background:var(--rx); color:#062825;}
+  .primary-btn:disabled{opacity:0.35; cursor:not-allowed;}
+  .primary-btn:not(:disabled):hover{filter:brightness(1.08);}
+
+  .secondary-btn{
+    appearance:none; border:1px solid var(--border); background:transparent; color:var(--text);
+    border-radius:9px; padding:11px 16px; font-family:var(--mono); font-size:12.5px;
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .secondary-btn:hover{border-color:rgba(255,255,255,0.25); background:var(--panel-2);}
+
+  .note{font-size:11.5px; color:var(--muted); line-height:1.5; margin:0;}
+  .note.warn{color:#e0b34a;}
+  .note.good{color:var(--good);}
+  .note.bad{color:var(--bad);}
+
+  /* stage */
+  .stage{
+    position:relative; width:100%; aspect-ratio:1/1; max-width:480px; margin:0 auto;
+    background:#05070a; border-radius:12px; overflow:hidden;
+    border:1px solid var(--border-soft);
+  }
+  .stage canvas, .stage video{
+    width:100%; height:100%; object-fit:contain; display:block;
+  }
+  #qrCanvas{image-rendering:pixelated;}
+  .idle-msg{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:24px; font-size:13px; color:var(--muted); font-family:var(--mono);
+  }
+  .reticle{position:absolute; width:22px; height:22px; z-index:2; pointer-events:none;}
+  .reticle.tl{top:10px; left:10px; border-top:2px solid; border-left:2px solid; border-radius:4px 0 0 0;}
+  .reticle.tr{top:10px; right:10px; border-top:2px solid; border-right:2px solid; border-radius:0 4px 0 0;}
+  .reticle.bl{bottom:10px; left:10px; border-bottom:2px solid; border-left:2px solid; border-radius:0 0 0 4px;}
+  .reticle.br{bottom:10px; right:10px; border-bottom:2px solid; border-right:2px solid; border-radius:0 0 4px 0;}
+  .send-panel .reticle{border-color:rgba(255,176,32,0.55);}
+  .receive-panel .reticle{border-color:rgba(79,209,197,0.55);}
+
+  .stage.pulse{animation:pulseFlash .18s ease-out;}
+  @keyframes pulseFlash{ from{ box-shadow: inset 0 0 0 2px rgba(255,255,255,0.25);} to{ box-shadow: inset 0 0 0 0 rgba(255,255,255,0);} }
+  @media (prefers-reduced-motion: reduce){ .stage.pulse{animation:none;} }
+
+  /* telemetry strip */
+  .telemetry{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:1px;
+    background:var(--border-soft); border:1px solid var(--border-soft); border-radius:10px; overflow:hidden;
+  }
+  .telemetry > div{
+    background:var(--panel-2); padding:10px 12px; display:flex; flex-direction:column; gap:3px;
+  }
+  .t-label{font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted);}
+  .t-val{font-family:var(--mono); font-size:13px;}
+  .chan-legend{display:flex; gap:6px; align-items:center;}
+  .dot{width:9px;height:9px;border-radius:50%; display:inline-block; background:rgba(255,255,255,0.12); transition:background .08s, box-shadow .08s;}
+  .dot.r{background:rgba(239,100,97,0.25);}
+  .dot.g{background:rgba(111,207,114,0.25);}
+  .dot.b{background:rgba(94,166,255,0.25);}
+  .dot.lit.r{background:#ef6461; box-shadow:0 0 6px #ef6461;}
+  .dot.lit.g{background:#6fcf72; box-shadow:0 0 6px #6fcf72;}
+  .dot.lit.b{background:#5ea6ff; box-shadow:0 0 6px #5ea6ff;}
+
+  .progress-bar{height:6px; border-radius:4px; background:var(--panel-2); overflow:hidden; border:1px solid var(--border-soft);}
+  .progress-fill{height:100%; width:0%; background:linear-gradient(90deg, var(--rx), #7ee9de); transition:width .12s linear;}
+
+  footer.foot-note{
+    text-align:center; margin-top:20px; font-size:11.5px; color:var(--muted);
+    font-family:var(--mono);
+  }
+
+  [hidden]{display:none !important;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">▣</div>
+      <div class="brand-text">
+        <h1>AIRGAP<span class="accent">·</span>QR</h1>
+        <p>Camera-scanned file transfer — nothing touches a network</p>
+      </div>
+    </div>
+    <div class="mode-switch">
+      <button class="mode-btn tx active" data-mode="send">TX — Send</button>
+      <button class="mode-btn rx" data-mode="receive">RX — Receive</button>
+    </div>
+  </div>
+
+  <div class="console">
+
+    <!-- ================= SEND ================= -->
+    <section class="panel send-panel" data-panel="send">
+      <div class="side-col">
+        <h2 class="section-title">Source file</h2>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" hidden>
+          <p class="dz-label">Drop a file or <button class="link-btn" id="browseBtn">browse</button></p>
+          <p class="dz-hint">Works best for small files — a few hundred KB up to a couple MB</p>
+        </div>
+        <div class="file-info" id="fileInfo" hidden>
+          <div class="row"><span>Name</span><span id="fiName"></span></div>
+          <div class="row"><span>Size</span><span id="fiSize"></span></div>
+          <div class="row"><span>Est. time</span><span id="fiEta"></span></div>
+        </div>
+        <p class="note warn" id="sizeWarning" hidden>This file is fairly large for QR transfer — it may take a while and needs a steady scan on the receiving end.</p>
+
+        <h2 class="section-title">Signal settings</h2>
+        <div class="controls">
+          <label>Speed
+            <div class="row-inline">
+              <input type="range" id="fpsSlider" min="2" max="12" value="6" step="1">
+              <span class="fps-val" id="fpsVal">6 fps</span>
+            </div>
+          </label>
+          <label>Density
+            <select id="densitySelect">
+              <option value="low">Low — most reliable</option>
+              <option value="medium" selected>Medium — balanced</option>
+              <option value="high">High — fastest, needs a steady camera</option>
+            </select>
+          </label>
+        </div>
+
+        <button class="primary-btn tx" id="startTxBtn" disabled>Start transmission</button>
+        <button class="secondary-btn" id="stopTxBtn" hidden>Stop</button>
+        <p class="note">Each frame packs three independent QR codes into one image, one per color channel, so the receiving camera decodes three chunks per frame instead of one.</p>
+      </div>
+
+      <div class="stage-col">
+        <div class="stage" id="txStageEl">
+          <div class="reticle tl"></div><div class="reticle tr"></div>
+          <div class="reticle bl"></div><div class="reticle br"></div>
+          <canvas id="qrCanvas" width="560" height="560"></canvas>
+          <div class="idle-msg" id="txIdleMsg">Load a file to begin transmitting</div>
+        </div>
+        <div class="telemetry">
+          <div><span class="t-label">Frame</span><span class="t-val" id="txFrame">0 / 0</span></div>
+          <div><span class="t-label">Loop</span><span class="t-val" id="txLoop">0</span></div>
+          <div><span class="t-label">Channels</span><span class="t-val chan-legend"><i class="dot r lit"></i><i class="dot g lit"></i><i class="dot b lit"></i></span></div>
+          <div><span class="t-label">Throughput</span><span class="t-val" id="txRate">—</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= RECEIVE ================= -->
+    <section class="panel receive-panel" data-panel="receive" hidden>
+      <div class="side-col">
+        <h2 class="section-title">Camera</h2>
+        <div class="controls">
+          <label>Device
+            <select id="cameraSelect"><option value="">Default camera</option></select>
+          </label>
+        </div>
+        <button class="primary-btn rx" id="startRxBtn">Start scanning</button>
+        <button class="secondary-btn" id="stopRxBtn" hidden>Stop</button>
+
+        <div class="file-info" id="rxFileInfo" hidden>
+          <div class="row"><span>Name</span><span id="rfName"></span></div>
+          <div class="row"><span>Size</span><span id="rfSize"></span></div>
+          <div class="row"><span>Integrity</span><span id="rfHash">pending…</span></div>
+        </div>
+
+        <a class="primary-btn rx" id="downloadBtn" hidden download>Save file</a>
+        <button class="secondary-btn" id="resetRxBtn" hidden>Scan another file</button>
+        <p class="note" id="rxError" hidden></p>
+        <p class="note">Point this device's camera at the sending screen and hold it steady, filling as much of the frame as you can with the code.</p>
+      </div>
+
+      <div class="stage-col">
+        <div class="stage" id="rxStageEl">
+          <div class="reticle tl"></div><div class="reticle tr"></div>
+          <div class="reticle bl"></div><div class="reticle br"></div>
+          <video id="video" playsinline muted></video>
+          <div class="idle-msg" id="rxIdleMsg">Start scanning to receive a file</div>
+        </div>
+        <div class="telemetry">
+          <div><span class="t-label">Chunks</span><span class="t-val" id="rxChunks">0 / 0</span></div>
+          <div><span class="t-label">Integrity</span><span class="t-val" id="rxIntegrity">—</span></div>
+          <div><span class="t-label">Channels</span><span class="t-val chan-legend"><i class="dot r" id="dotR"></i><i class="dot g" id="dotG"></i><i class="dot b" id="dotB"></i></span></div>
+          <div><span class="t-label">Progress</span><span class="t-val" id="rxRate">0%</span></div>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" id="rxProgressFill"></div></div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="foot-note">Everything runs locally in this browser tab. Data leaves the sending device only as light on the screen.</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     Shared helpers
+  ============================================================ */
+  const EC_LEVEL = 'M';
+  const DENSITY_PRESETS = { low: 110, medium: 200, high: 320 };
+
+  function arrayBufferToBase64(buf) {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToUint8Array(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function sha256Hex(bufferOrView) {
+    const buf = bufferOrView instanceof ArrayBuffer ? bufferOrView : bufferOrView.buffer;
+    const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function formatBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  function makeQRAtMinType(data, ecLevel) {
+    let t = 1;
+    while (t <= 40) {
+      try {
+        const qr = qrcode(t, ecLevel);
+        qr.addData(data);
+        qr.make();
+        return t;
+      } catch (e) { t++; }
+    }
+    throw new Error('Payload too large to encode as a QR code');
+  }
+
+  function makeQRAtFixedType(data, typeNumber, ecLevel) {
+    const qr = qrcode(typeNumber, ecLevel);
+    qr.addData(data);
+    qr.make();
+    return qr;
+  }
+
+  function pulse(el) {
+    el.classList.remove('pulse');
+    // eslint-disable-next-line no-unused-expressions
+    void el.offsetWidth; // restart animation
+    el.classList.add('pulse');
+  }
+
+  /* ============================================================
+     Mode switching
+  ============================================================ */
+  const modeBtns = document.querySelectorAll('.mode-btn');
+  const panels = document.querySelectorAll('.panel');
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      modeBtns.forEach(b => b.classList.toggle('active', b === btn));
+      panels.forEach(p => p.hidden = p.dataset.panel !== mode);
+      if (mode !== 'receive') stopRx();
+      if (mode !== 'send') stopTx();
+    });
+  });
+
+  /* ============================================================
+     SENDER
+  ============================================================ */
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const browseBtn = document.getElementById('browseBtn');
+  const fileInfo = document.getElementById('fileInfo');
+  const fiName = document.getElementById('fiName');
+  const fiSize = document.getElementById('fiSize');
+  const fiEta = document.getElementById('fiEta');
+  const sizeWarning = document.getElementById('sizeWarning');
+  const fpsSlider = document.getElementById('fpsSlider');
+  const fpsVal = document.getElementById('fpsVal');
+  const densitySelect = document.getElementById('densitySelect');
+  const startTxBtn = document.getElementById('startTxBtn');
+  const stopTxBtn = document.getElementById('stopTxBtn');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const txIdleMsg = document.getElementById('txIdleMsg');
+  const txStageEl = document.getElementById('txStageEl');
+  const txFrameEl = document.getElementById('txFrame');
+  const txLoopEl = document.getElementById('txLoop');
+  const txRateEl = document.getElementById('txRate');
+
+  const tx = {
+    file: null,
+    groups: null,
+    groupIndex: 0,
+    loopCount: 0,
+    timer: null,
+    playing: false,
+    fps: 6,
+    chunkLen: DENSITY_PRESETS.medium,
+  };
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  browseBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+  fileInput.addEventListener('change', (e) => { if (e.target.files[0]) selectFile(e.target.files[0]); });
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    if (e.dataTransfer.files[0]) selectFile(e.dataTransfer.files[0]);
+  });
+
+  fpsSlider.addEventListener('input', () => {
+    tx.fps = parseInt(fpsSlider.value, 10);
+    fpsVal.textContent = tx.fps + ' fps';
+    if (tx.playing) restartTimer();
+    if (tx.file) updateEta();
+  });
+  densitySelect.addEventListener('change', () => {
+    tx.chunkLen = DENSITY_PRESETS[densitySelect.value];
+    if (tx.file) updateEta();
+  });
+
+  function selectFile(file) {
+    tx.file = file;
+    fileInfo.hidden = false;
+    fiName.textContent = file.name;
+    fiSize.textContent = formatBytes(file.size);
+    sizeWarning.hidden = file.size <= 2 * 1024 * 1024;
+    startTxBtn.disabled = false;
+    updateEta();
+  }
+
+  function updateEta() {
+    if (!tx.file) return;
+    const base64Len = Math.ceil(tx.file.size / 3) * 4;
+    const totalChunks = Math.ceil(base64Len / tx.chunkLen);
+    const groups = Math.ceil((totalChunks + 1) / 3); // +1 for header packet
+    const seconds = groups / tx.fps;
+    fiEta.textContent = seconds < 60 ? Math.ceil(seconds) + ' s' : (seconds / 60).toFixed(1) + ' min';
+  }
+
+  async function prepareTransmission(file, chunkLen) {
+    const buf = await file.arrayBuffer();
+    const hashHex = await sha256Hex(buf);
+    const base64 = arrayBufferToBase64(buf);
+    const totalChunks = Math.max(1, Math.ceil(base64.length / chunkLen));
+    const headerObj = {
+      n: file.name, s: file.size, t: file.type || 'application/octet-stream',
+      c: totalChunks, l: chunkLen, h: hashHex
+    };
+    const headerStr = 'H' + JSON.stringify(headerObj);
+    const sequence = [headerStr];
+    for (let i = 0; i < totalChunks; i++) {
+      sequence.push('D' + i + ':' + base64.slice(i * chunkLen, (i + 1) * chunkLen));
+    }
+    return sequence;
+  }
+
+  function buildGroups(sequence) {
+    const groups = [];
+    for (let i = 0; i < sequence.length; i += 3) {
+      const real = sequence.slice(i, i + 3);
+      groups.push([0, 1, 2].map(k => real[k % real.length]));
+    }
+    return groups;
+  }
+
+  function renderGroupToCanvas(group, canvas) {
+    let maxType = 1;
+    for (const p of group) {
+      const t = makeQRAtMinType(p, EC_LEVEL);
+      if (t > maxType) maxType = t;
+    }
+    const qrs = group.map(p => makeQRAtFixedType(p, maxType, EC_LEVEL));
+    const moduleCount = qrs[0].getModuleCount();
+    const QUIET = 4;
+    const totalModules = moduleCount + QUIET * 2;
+    const targetSize = 560;
+    const modulePx = Math.max(3, Math.floor(targetSize / totalModules));
+    const size = modulePx * totalModules;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+    const imgData = ctx.getImageData(0, 0, size, size);
+    const data = imgData.data;
+    for (let row = 0; row < moduleCount; row++) {
+      for (let col = 0; col < moduleCount; col++) {
+        const rVal = qrs[0].isDark(row, col) ? 0 : 255;
+        const gVal = qrs[1].isDark(row, col) ? 0 : 255;
+        const bVal = qrs[2].isDark(row, col) ? 0 : 255;
+        const px0 = (QUIET + col) * modulePx;
+        const py0 = (QUIET + row) * modulePx;
+        for (let dy = 0; dy < modulePx; dy++) {
+          const rowStart = (py0 + dy) * size;
+          for (let dx = 0; dx < modulePx; dx++) {
+            const idx = (rowStart + px0 + dx) * 4;
+            data[idx] = rVal; data[idx + 1] = gVal; data[idx + 2] = bVal; data[idx + 3] = 255;
+          }
+        }
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  function restartTimer() {
+    if (tx.timer) clearInterval(tx.timer);
+    tx.timer = setInterval(tick, Math.round(1000 / tx.fps));
+  }
+
+  function tick() {
+    const group = tx.groups[tx.groupIndex];
+    renderGroupToCanvas(group, qrCanvas);
+    pulse(txStageEl);
+    txFrameEl.textContent = (tx.groupIndex + 1) + ' / ' + tx.groups.length;
+    txLoopEl.textContent = tx.loopCount;
+    const bytesPerSec = (3 * tx.chunkLen * 0.75 * tx.fps);
+    txRateEl.textContent = '~' + formatBytes(Math.round(bytesPerSec)) + '/s';
+    tx.groupIndex++;
+    if (tx.groupIndex >= tx.groups.length) {
+      tx.groupIndex = 0;
+      tx.loopCount++;
+    }
+  }
+
+  startTxBtn.addEventListener('click', async () => {
+    if (!tx.file) return;
+    startTxBtn.disabled = true;
+    startTxBtn.textContent = 'Preparing…';
+    try {
+      const sequence = await prepareTransmission(tx.file, tx.chunkLen);
+      tx.groups = buildGroups(sequence);
+      tx.groupIndex = 0;
+      tx.loopCount = 0;
+      tx.playing = true;
+      txIdleMsg.hidden = true;
+      startTxBtn.hidden = true;
+      stopTxBtn.hidden = false;
+      tick();
+      restartTimer();
+    } catch (err) {
+      alert('Could not prepare this file for transmission: ' + err.message);
+    } finally {
+      startTxBtn.disabled = false;
+      startTxBtn.textContent = 'Start transmission';
+    }
+  });
+
+  stopTxBtn.addEventListener('click', stopTx);
+
+  function stopTx() {
+    if (tx.timer) { clearInterval(tx.timer); tx.timer = null; }
+    tx.playing = false;
+    startTxBtn.hidden = false;
+    stopTxBtn.hidden = true;
+    txIdleMsg.hidden = !tx.file;
+    txIdleMsg.textContent = tx.file ? 'Stopped — press start to resume' : 'Load a file to begin transmitting';
+  }
+
+  /* ============================================================
+     RECEIVER
+  ============================================================ */
+  const cameraSelect = document.getElementById('cameraSelect');
+  const startRxBtn = document.getElementById('startRxBtn');
+  const stopRxBtn = document.getElementById('stopRxBtn');
+  const rxFileInfo = document.getElementById('rxFileInfo');
+  const rfName = document.getElementById('rfName');
+  const rfSize = document.getElementById('rfSize');
+  const rfHash = document.getElementById('rfHash');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const resetRxBtn = document.getElementById('resetRxBtn');
+  const rxError = document.getElementById('rxError');
+  const videoEl = document.getElementById('video');
+  const rxStageEl = document.getElementById('rxStageEl');
+  const rxIdleMsg = document.getElementById('rxIdleMsg');
+  const rxChunksEl = document.getElementById('rxChunks');
+  const rxIntegrityEl = document.getElementById('rxIntegrity');
+  const rxRateEl = document.getElementById('rxRate');
+  const rxProgressFill = document.getElementById('rxProgressFill');
+  const dotR = document.getElementById('dotR');
+  const dotG = document.getElementById('dotG');
+  const dotB = document.getElementById('dotB');
+
+  const rx = {
+    stream: null,
+    scanning: false,
+    header: null,
+    total: 0,
+    chunks: new Map(),
+    workCanvas: document.createElement('canvas'),
+    lastProcess: 0,
+  };
+
+  async function populateCameras() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      const current = cameraSelect.value;
+      cameraSelect.innerHTML = '<option value="">Default camera</option>';
+      cams.forEach((cam, i) => {
+        const opt = document.createElement('option');
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label || ('Camera ' + (i + 1));
+        cameraSelect.appendChild(opt);
+      });
+      if (current) cameraSelect.value = current;
+    } catch (e) { /* ignore — labels just won't be populated yet */ }
+  }
+  populateCameras();
+  if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', populateCameras);
+  }
+
+  function showRxError(msg) {
+    rxError.hidden = !msg;
+    rxError.textContent = msg || '';
+    rxError.className = 'note bad';
+  }
+
+  startRxBtn.addEventListener('click', async () => {
+    showRxError('');
+    const deviceId = cameraSelect.value;
+    const constraints = { audio: false, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' } };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      rx.stream = stream;
+      videoEl.srcObject = stream;
+      await videoEl.play();
+      rx.scanning = true;
+      rxIdleMsg.hidden = true;
+      startRxBtn.hidden = true;
+      stopRxBtn.hidden = false;
+      resetRxBtn.hidden = true;
+      downloadBtn.hidden = true;
+      rxFileInfo.hidden = true;
+      populateCameras();
+      requestAnimationFrame(scanLoop);
+    } catch (err) {
+      showRxError('Camera access failed: ' + err.message);
+    }
+  });
+
+  stopRxBtn.addEventListener('click', () => stopRx(true));
+
+  function stopRx(userStopped) {
+    rx.scanning = false;
+    if (rx.stream) {
+      rx.stream.getTracks().forEach(t => t.stop());
+      rx.stream = null;
+    }
+    startRxBtn.hidden = false;
+    stopRxBtn.hidden = true;
+    if (userStopped) {
+      rxIdleMsg.hidden = false;
+      rxIdleMsg.textContent = 'Stopped — press start scanning to resume';
+    }
+    [dotR, dotG, dotB].forEach(d => d.classList.remove('lit'));
+  }
+
+  function resetRxState() {
+    rx.header = null;
+    rx.total = 0;
+    rx.chunks = new Map();
+    rxChunksEl.textContent = '0 / 0';
+    rxIntegrityEl.textContent = '—';
+    rxRateEl.textContent = '0%';
+    rxProgressFill.style.width = '0%';
+    rxFileInfo.hidden = true;
+    downloadBtn.hidden = true;
+    resetRxBtn.hidden = true;
+    rxIdleMsg.hidden = false;
+    rxIdleMsg.textContent = 'Start scanning to receive a file';
+  }
+
+  resetRxBtn.addEventListener('click', () => {
+    resetRxState();
+  });
+
+  function scanLoop(ts) {
+    if (!rx.scanning) return;
+    if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA) {
+      if (!rx.lastProcess || ts - rx.lastProcess > 66) { // throttle to ~15fps analysis
+        rx.lastProcess = ts;
+        processVideoFrame();
+      }
+    }
+    requestAnimationFrame(scanLoop);
+  }
+
+  function processVideoFrame() {
+    const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+    if (!vw || !vh) return;
+    const maxDim = 900;
+    const scale = Math.min(1, maxDim / Math.max(vw, vh));
+    const w = Math.round(vw * scale), h = Math.round(vh * scale);
+    const canvas = rx.workCanvas;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoEl, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    let decodedAny = false;
+    const dots = [dotR, dotG, dotB];
+    for (let ch = 0; ch < 3; ch++) {
+      const chanData = extractChannel(data, w, h, ch);
+      const result = jsQR(chanData, w, h, { inversionAttempts: 'dontInvert' });
+      dots[ch].classList.toggle('lit', !!result);
+      if (result) { decodedAny = true; handlePacket(result.data); }
+    }
+    if (decodedAny) pulse(rxStageEl);
+  }
+
+  function extractChannel(rgba, w, h, channelIdx) {
+    const out = new Uint8ClampedArray(w * h * 4);
+    for (let i = 0; i < w * h; i++) {
+      const v = rgba[i * 4 + channelIdx];
+      const o = i * 4;
+      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = 255;
+    }
+    return out;
+  }
+
+  function handlePacket(str) {
+    if (!str || !str.length) return;
+    if (str[0] === 'H') {
+      if (!rx.header) {
+        try {
+          const obj = JSON.parse(str.slice(1));
+          rx.header = obj;
+          rx.total = obj.c;
+          rfName.textContent = obj.n;
+          rfSize.textContent = formatBytes(obj.s);
+          rfHash.textContent = 'pending…';
+          rxFileInfo.hidden = false;
+          rxChunksEl.textContent = rx.chunks.size + ' / ' + rx.total;
+        } catch (e) { /* malformed header packet, ignore */ }
+      }
+    } else if (str[0] === 'D') {
+      const colon = str.indexOf(':');
+      if (colon === -1) return;
+      const idx = parseInt(str.slice(1, colon), 10);
+      if (Number.isNaN(idx)) return;
+      const payload = str.slice(colon + 1);
+      if (!rx.chunks.has(idx)) {
+        rx.chunks.set(idx, payload);
+        if (rx.total) {
+          rxChunksEl.textContent = rx.chunks.size + ' / ' + rx.total;
+          const pct = Math.round((rx.chunks.size / rx.total) * 100);
+          rxRateEl.textContent = pct + '%';
+          rxProgressFill.style.width = pct + '%';
+        }
+      }
+    }
+    checkComplete();
+  }
+
+  let assembling = false;
+  async function checkComplete() {
+    if (assembling) return;
+    if (!rx.header || rx.chunks.size < rx.total) return;
+    assembling = true;
+    stopRx(false);
+    rxIdleMsg.hidden = true;
+    try {
+      let base64 = '';
+      for (let i = 0; i < rx.total; i++) base64 += rx.chunks.get(i);
+      const bytes = base64ToUint8Array(base64);
+      const hashHex = await sha256Hex(bytes.buffer);
+      const verified = hashHex === rx.header.h;
+      rxIntegrityEl.textContent = verified ? 'verified ✓' : 'mismatch ⚠';
+      rfHash.textContent = verified ? 'verified ✓' : 'checksum mismatch';
+      const blob = new Blob([bytes], { type: rx.header.t });
+      const url = URL.createObjectURL(blob);
+      downloadBtn.href = url;
+      downloadBtn.download = rx.header.n || 'received-file';
+      downloadBtn.hidden = false;
+      resetRxBtn.hidden = false;
+      if (!verified) {
+        showRxError('The file was fully received but the checksum does not match — it may have decoded incorrectly. You can still save it, but a re-scan is safer.');
+      }
+    } catch (err) {
+      showRxError('Could not assemble the file: ' + err.message);
+    } finally {
+      assembling = false;
+    }
+  }
+
+})();
+</script>
+</body>
+</html>
