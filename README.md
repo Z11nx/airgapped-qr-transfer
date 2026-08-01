@@ -2,7 +2,7 @@
 
 **Camera-scanned file transfer that never touches a network.**
 
-A single HTML file that turns any screen and camera into a file transfer link. One device displays a stream of animated QR codes, another device points its camera at the screen and reconstructs the file. No wifi, no Bluetooth, no server, no cloud in between, just light.
+A single HTML file that turns any screen and camera into a file transfer link. One device displays a stream of animated QR codes, another device points its camera at the screen and reconstructs the file.
 
 ## How it works
 
